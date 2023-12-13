@@ -1,8 +1,8 @@
 import "./css.css";
-import axios from 'axios';
+import axios from "axios";
 
 // @ts-ignore
-import { useSpeechSynthesis } from 'react-speech-kit';
+import { useSpeechSynthesis } from "react-speech-kit";
 import {
   ChakraProvider,
   Box,
@@ -23,6 +23,7 @@ import {
 import { Avatar } from "@chakra-ui/react";
 import botAvatar from "./robo.png"; // Replace with the actual path to your bot's avatar image
 import { useEffect, useRef, useState } from "react";
+import AudioRecorder from "./componentes/AudioRecorder";
 
 enum TipoMsg {
   Normal = 0,
@@ -50,10 +51,15 @@ export const App: React.FC = () => {
   const [isTraduzir, setIsTraduzir] = useState<boolean>(false);
   const [traducaoResposta, setTraducaoResposta] = useState("");
   const [lastBotMessage, setLastBotMessage] = useState<string | undefined>("");
+  const OPENAI_API_KEY = "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";
+
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState(null);
+  const [audioChunks, setAudioChunks] = useState([]);
 
   const { speak, speaking, supported } = useSpeechSynthesis();
 
-  const textToSpeak = 'hello how are u?'; // Texto en ruso
+  const textToSpeak = "hello how are u?"; // Texto en ruso
 
   const toast = useToast();
   const [qnaData, setQnaData] = useState<QnA[]>([
@@ -66,40 +72,7 @@ export const App: React.FC = () => {
     // Add more question-answer pairs as needed
   ]);
 
-  const handleSpeak = async () => {
-    try {
-      const response = await axios.post(
-        'https://ttsmp3.com/makemp3_new.php',
-        {
-          msg: "Привет, как дела?",
-          lang: 'Maxim',
-          source: 'ttsmp3',
-        },
-        {
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            // Adicione outros headers necessários aqui
-          },
-        }
-      );
-  
-      // Verifique se a resposta foi bem-sucedida
-      if (response.status === 200) {
-        const audioUrl = response.data.mp3;
-        // Agora você tem a URL do áudio gerado, você pode usar isso conforme necessário
-        // Por exemplo, você pode reproduzir o áudio usando a tag <audio>
-        const audio = new Audio(audioUrl);
-        audio.play();
-      } else {
-        // Lidar com erros, se necessário
-        console.error('Erro ao obter resposta da API');
-      }
-    } catch (error) {
-      // Lidar com erros de requisição
-      console.error('Erro ao fazer requisição para a API', error);
-    }
-  };
-  
+
 
   const handleSendMessage = () => {
     if (newMessage.trim() !== "") {
@@ -109,10 +82,10 @@ export const App: React.FC = () => {
         ...messages,
         { text: newMessage, sender: "user", tipo: TipoMsg.Normal },
       ]);
-      setNewMessage("");
+      
 
       // Call sendBot after a delay to simulate a bot response
-      setTimeout(sendBot, 500);
+      sendBot(newMessage)
     }
   };
 
@@ -138,7 +111,7 @@ export const App: React.FC = () => {
           });
 
           // Optionally, you can add a bot response after updating qnaData
-          setTimeout(sendBot, 500);
+          sendBot("upload")
         } catch (error) {
           console.error("Error parsing JSON file:", error);
 
@@ -156,48 +129,149 @@ export const App: React.FC = () => {
     }
   };
 
-  const sendBot = () => {
-    if (!isTraduzir) {
-      const matchingAnswer = findAnswer(newMessage);
-      setLastBotMessage(matchingAnswer);
-      if (newMessage) {
-        setMessages((prevMessages) => [
-          ...prevMessages,
-          {
-            text: matchingAnswer || "Desculpe, não entendi.",
-            sender: "bot",
-            tipo: TipoMsg.Normal,
-          },
-        ]);
-      }
-      if(newMessage){
-        setIsTraduzir(true);
-      }
-    } else {
-      console.log(lastBotMessage, isTraduzir);
-      const translation = findTranslation(lastBotMessage);
-      console.log(translation);
-      if (newMessage === translation) {
-        setMessages((prevMessages) => [
-          ...prevMessages,
-          {
-            text: newMessage,
-            sender: "bot",
-            tipo: TipoMsg.SuccessoTraducao,
-          },
-        ]);
-        setIsTraduzir(false);
-      } else {
-        setMessages((prevMessages) => [
-          ...prevMessages,
-          {
-            text: newMessage,
-            sender: "bot",
-            tipo: TipoMsg.ErroTraducao,
-          },
-        ]);
-      }
+  const handleSpeak = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      const audioChunks: any[] = [];
+  
+      mediaRecorder.addEventListener("dataavailable", (event) => {
+        if (event.data.size > 0) {
+          audioChunks.push(event.data);
+        }
+      });
+  
+      mediaRecorder.addEventListener("stop", async () => {
+        const audioBlob = new Blob(audioChunks, { type: "audio/wav" });
+        const audioFile = new File([audioBlob], "recorded_audio.wav", {
+          type: "audio/wav",
+        });
+  
+        const formData = new FormData();
+        formData.append("file", audioFile);
+        formData.append("model", "whisper-1");
+  
+        try {
+          const response = await fetch(
+            "https://api.openai.com/v1/audio/transcriptions",
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${OPENAI_API_KEY}`,
+              },
+              body: formData,
+            }
+          );
+  
+          if (response.ok) {
+            const data = await response.json();
+            //const transcribedText = data.transcriptions[0].text;
+  
+            // Now you have the transcribed text, you can use it as needed
+            console.log()
+            setNewMessage(data?.text)
+            setMessages([
+              ...messages,
+              { text: data?.text, sender: "user", tipo: TipoMsg.Normal },
+            ]);
+            sendBot(data?.text)
+            //handleSendMessage();
+            
+          } else {
+            console.error("Error transcribing audio:", response.statusText);
+          }
+        } catch (error) {
+          console.error("Error transcribing audio:", error);
+        }
+      });
+  
+      mediaRecorder.start();
+  
+      // Record for a few seconds (adjust as needed)
+      setTimeout(() => {
+        mediaRecorder.stop();
+        stream.getTracks().forEach((track) => track.stop());
+      }, 5000); // Record for 5 seconds (adjust as needed)
+    } catch (error) {
+      console.error("Error recording audio:", error);
     }
+  };
+  
+
+  function textToSpeach(text:string){
+    const requestData = {
+      model: 'tts-1',
+      input: text,
+      voice: 'alloy'
+    };
+    fetch('https://api.openai.com/v1/audio/speech', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestData)
+    })
+      .then(response => response.blob())
+      .then(blob => {
+        const audioUrl = URL.createObjectURL(blob);
+        
+        // Play the audio
+        const audio = new Audio(audioUrl);
+        audio.play();
+      })
+      .catch(error => console.error('Error:', error));
+  }
+
+  const sendBot = (input:string) => {
+    fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "system",
+            content:
+              "você é um professor de Russo. sempre aja como um profesor, explique de forma não demorada, e sempre, sempre diga para o aluno repetir.",
+          },
+          {
+            role: "user",
+            content: input,
+          },
+        ],
+        temperature: 0.5,
+        max_tokens: 1000,
+        top_p: 1,
+      }),
+    })
+    .then((response) => response.json())
+    .then((data) => {
+      setNewMessage("")
+      console.log(data?.choices[0]?.message?.content);
+      textToSpeach(data?.choices[0]?.message?.content)
+      setMessages((prevMessages) => [
+        ...prevMessages,
+        {
+          text: data?.choices[0]?.message?.content,
+          sender: "bot",
+          tipo: TipoMsg.Normal,
+        },
+      ]);
+    })
+    .catch((error) => console.error("Error:", error));
+
+      //  setMessages((prevMessages) => [
+      //   ...prevMessages,
+      //   {
+      //     text: "Corrigindo o código, parece que há um erro de sintaxe e falta de um ponto e vírgula. Aqui está a versão corrigida:",
+      //     sender: "bot",
+      //     tipo: TipoMsg.Normal,
+      //   },
+      // ]);
   };
 
   const findAnswer = (question: string): string | undefined => {
@@ -238,7 +312,7 @@ export const App: React.FC = () => {
             <VStack
               px={5}
               py={3}
-              w={600}
+              w={"80%"}
               borderRadius={5}
               bg="white"
               spacing={8}
@@ -271,32 +345,14 @@ export const App: React.FC = () => {
                     message.sender === "user" ? (
                       <VStack align={"end"} key={index}>
                         <HStack
-                          color={"white"}
+                          textAlign={"start"}
+                          maxW={500}
+                          color={"black"}
                           bg={"#D3D6D6"}
                           padding={2}
                           borderRadius={10}
                         >
-                          {message.text.split(" ").map((word, wordIndex) => (
-                            <Tooltip
-                              placement="top"
-                              hasArrow
-                              label="Tradução aqui"
-                              bg="#4AD897"
-                            >
-                              <Text
-                                color={"black"}
-                                key={wordIndex}
-                                fontSize={"sm"}
-                                onClick={() => {}}
-                                _hover={{
-                                  background: "#78F5BC",
-                                  cursor: "pointer",
-                                }}
-                              >
-                                {`${word} `}
-                              </Text>
-                            </Tooltip>
-                          ))}
+                          <Text fontSize={"md"}>{message.text}</Text>
                         </HStack>
                       </VStack>
                     ) : (
@@ -357,7 +413,7 @@ export const App: React.FC = () => {
                             {message.tipo === TipoMsg.SuccessoTraducao ? (
                               <>
                                 <VStack align={"start"}>
-                                  <Alert fontSize={"sm"}  status="success">
+                                  <Alert fontSize={"sm"} status="success">
                                     <AlertIcon />
                                     <Box>
                                       <AlertDescription>
@@ -408,44 +464,24 @@ export const App: React.FC = () => {
                               <>
                                 <VStack align={"start"}>
                                   <HStack
-                                    color={"white"}
-                                    bg={"#D3D6D6"}
+                                    maxW={500}
+                                    textAlign={"start"}
+                                    color={"black"}
+                                    bg={"#4AD897"}
                                     padding={2}
                                     borderRadius={10}
                                   >
-                                    {message.text
-                                      .split(" ")
-                                      .map((word, wordIndex) => (
-                                        <Tooltip
-                                          placement="top"
-                                          hasArrow
-                                          label="Tradução aqui"
-                                          bg="#4AD897"
-                                        >
-                                          <Text
-                                            color={"black"}
-                                            key={wordIndex}
-                                            fontSize={"sm"}
-                                            onClick={() => {}}
-                                            _hover={{
-                                              background: "#78F5BC",
-                                              cursor: "pointer",
-                                            }}
-                                          >
-                                            {`${word} `}
-                                          </Text>
-                                        </Tooltip>
-                                      ))}
+                               <Text fontSize={"md"}>{message.text}</Text>
                                   </HStack>
 
                                   {message.sender === "bot" &&
                                     index === messages.length - 1 && (
                                       <HStack mt={2} spacing={2}>
-                                        <Alert  fontSize={"sm"} status="warning">
+                                        {/* <Alert fontSize={"sm"} status="warning">
                                           <AlertIcon />
                                           Responda o significado antes de
                                           responder ao Bot.
-                                        </Alert>
+                                        </Alert> */}
                                         {/* <Button
                                 colorScheme="green"
                                 variant="ghost"
@@ -487,8 +523,9 @@ export const App: React.FC = () => {
                   onKeyPress={handleKeyPress}
                 />
                 <button onClick={handleSpeak} disabled={!supported || speaking}>
-        Говори!
-      </button>
+                  Говори!
+                </button>
+                <AudioRecorder/>
               </Box>
             </VStack>
           </VStack>
