@@ -24,6 +24,7 @@ import { Avatar } from "@chakra-ui/react";
 import botAvatar from "./robo.png"; // Replace with the actual path to your bot's avatar image
 import { useEffect, useRef, useState } from "react";
 import AudioRecorder from "./componentes/AudioRecorder";
+import YourComponent from "./componentes/AudioRecorderAPI";
 
 enum TipoMsg {
   Normal = 0,
@@ -51,7 +52,7 @@ export const App: React.FC = () => {
   const [isTraduzir, setIsTraduzir] = useState<boolean>(false);
   const [traducaoResposta, setTraducaoResposta] = useState("");
   const [lastBotMessage, setLastBotMessage] = useState<string | undefined>("");
-  const OPENAI_API_KEY = "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";
+  const OPENAI_API_KEY = "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";
 
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState(null);
@@ -202,7 +203,7 @@ export const App: React.FC = () => {
     const requestData = {
       model: 'tts-1',
       input: text,
-      voice: 'alloy'
+      voice: 'onyx'
     };
     fetch('https://api.openai.com/v1/audio/speech', {
       method: 'POST',
@@ -244,7 +245,7 @@ export const App: React.FC = () => {
           },
         ],
         temperature: 0.5,
-        max_tokens: 1000,
+        max_tokens: 60,
         top_p: 1,
       }),
     })
@@ -526,6 +527,7 @@ export const App: React.FC = () => {
                   Говори!
                 </button>
                 <AudioRecorder/>
+                <YourComponent/>
               </Box>
             </VStack>
           </VStack>

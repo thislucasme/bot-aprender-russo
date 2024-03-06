@@ -9,7 +9,7 @@ const AudioRecorder: React.FC = () => {
   );
   const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
 
-  const OPENAI_API_KEY = "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";
+  const OPENAI_API_KEY = "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";
 
   const handleToggleRecording = async () => {
     if (isRecording) {
